@@ -39,18 +39,12 @@ function getProxyDetails() {
         return null;
     }
     
-    let content = fs.readFileSync(PROXY_FILE, "utf-8").trim();
+    const content = fs.readFileSync(PROXY_FILE, "utf-8").trim();
     const lines = content.split("\n").map(l => l.trim()).filter(l => l.length > 0);
 
     if (lines.length === 0) return null;
 
-    let rawProxy = lines[0];
-
-    // Remove any protocol prefixes if present
-    if (rawProxy.startsWith("socks5://")) rawProxy = rawProxy.replace("socks5://", "");
-    if (rawProxy.startsWith("http://")) rawProxy = rawProxy.replace("http://", "");
-
-    const parts = rawProxy.split(":");
+    const parts = lines[0].split(":");
 
     if (parts.length === 4) {
         // HOST:PORT:USER:PASS
@@ -60,9 +54,17 @@ function getProxyDetails() {
             username: parts[2].trim(),
             password: parts[3].trim()
         };
+    } else if (parts.length === 3) {
+        // HOST:USER:PASS (Fallback)
+        return {
+            host: parts[0].trim(),
+            port: "7778",
+            username: parts[1].trim(),
+            password: parts[2].trim()
+        };
     }
 
-    console.error("ERROR: proxy.txt format sahi nahi hai! Expected: HOST:PORT:USER:PASS");
+    console.error("ERROR: proxy.txt ka format sahi nahi hai!");
     return null;
 }
 
@@ -196,9 +198,8 @@ async function startBot() {
     ];
 
     if (proxy) {
-        console.log(`LOG: Connecting SOCKS5 Proxy -> Host: ${proxy.host} | Port: ${proxy.port}`);
-        // Valid Chromium proxy string format
-        launchArgs.push(`--proxy-server=socks5://${proxy.host}:${proxy.port}`);
+        console.log(`LOG: Connecting Proxy -> Host: ${proxy.host} | Port: ${proxy.port}`);
+        launchArgs.push(`--proxy-server=${proxy.host}:${proxy.port}`);
     }
 
     console.log("LOG: Launching Stealth Browser...");
@@ -210,13 +211,13 @@ async function startBot() {
 
     const page = await browser.newPage();
 
-    // Authenticate credentials via Puppeteer
+    // Authenticate Proxy Credentials
     if (proxy && proxy.username && proxy.password) {
         await page.authenticate({
             username: proxy.username,
             password: proxy.password
         });
-        console.log("LOG: Proxy authentication applied successfully!");
+        console.log("LOG: Proxy authentication success!");
     }
 
     // Stealth Overrides
