@@ -57,9 +57,12 @@ async function processNumber(page, phoneNumber) {
     console.log("LOG: Number entered. Submitting search via Enter key...");
 
     // 3. Submit Form using Enter Key
-    await page.keyboard.press("Enter");
+    await Promise.all([
+        page.keyboard.press("Enter"),
+        page.waitForNavigation({ waitUntil: "networkidle2", timeout: 15000 }).catch(() => {})
+    ]);
 
-    await sleep(5000); // Response wait
+    await sleep(3000);
 
     // 4. Check if Account Exists or Not Found
     const pageText = await page.evaluate(() => document.body.innerText);
@@ -71,7 +74,7 @@ async function processNumber(page, phoneNumber) {
         pageText.includes("We couldn't find an account")
     ) {
         console.log(`❌ RESULT: [${phoneNumber}] -> No Account Found.`);
-        return; // Move to next number
+        return;
     }
 
     console.log(`✅ RESULT: [${phoneNumber}] -> Account Found!`);
@@ -91,34 +94,37 @@ async function processNumber(page, phoneNumber) {
             }
         });
 
-        // Click Primary Continue Button
-        await page.evaluate(() => {
-            const buttons = Array.from(document.querySelectorAll('button, input[type="submit"]'));
-            const continueBtn = buttons.find(b => b.innerText && b.innerText.toLowerCase().includes("continue"));
-            if (continueBtn) continueBtn.click();
-        });
+        // Click Continue
+        console.log("LOG: Submitting SMS selection...");
+        await Promise.all([
+            page.evaluate(() => {
+                const btns = Array.from(document.querySelectorAll('button, input[type="submit"], div[role="button"]'));
+                const cont = btns.find(b => (b.innerText || b.value || "").toLowerCase().includes("continue"));
+                if (cont) cont.click();
+            }),
+            page.waitForNavigation({ waitUntil: "networkidle2", timeout: 15000 }).catch(() => {})
+        ]);
 
-        console.log("LOG: Submitted form to send code.");
-        
-        // 6. Wait for OTP screen to render properly
-        await sleep(6000);
+        // Extra wait for code confirmation page to load
+        await sleep(5000);
 
-        // 7. Click "Didn't get a code?" button (Mobile Layout Fix)
+        // 6. Click "Didn't get a code?" button
         console.log("LOG: Looking for 'Didn't get a code?' button...");
 
         const clicked = await page.evaluate(() => {
-            // Mobile layout button, form submit or link match
-            const targets = Array.from(document.querySelectorAll('button, a, input[type="submit"], div[role="button"]'));
-            const target = targets.find(el => {
-                const txt = (el.innerText || el.value || "").toLowerCase().trim();
-                return txt.includes("didn't get a code") || 
-                       txt.includes("did not get a code") ||
-                       txt.includes("didn't receive") ||
-                       txt.includes("resend");
+            const allNodes = Array.from(document.querySelectorAll('*'));
+            const targetNode = allNodes.find(node => {
+                const text = (node.innerText || node.textContent || "").trim();
+                return (
+                    text === "Didn't get a code?" || 
+                    text === "Didn't get a code" ||
+                    text === "Didn't receive a code?"
+                ) && node.children.length === 0; // Ensures clicking the deepest element
             });
 
-            if (target) {
-                target.click();
+            if (targetNode) {
+                targetNode.click();
+                if (targetNode.parentElement) targetNode.parentElement.click(); // Backup parent click
                 return true;
             }
             return false;
@@ -127,7 +133,7 @@ async function processNumber(page, phoneNumber) {
         if (clicked) {
             console.log("LOG: ✅ Successfully clicked 'Didn't get a code?' button!");
         } else {
-            console.log("LOG: ⚠️ Could not find 'Didn't get a code' button on screen.");
+            console.log("LOG: ⚠️ 'Didn't get a code' button not found on screen.");
         }
 
         await sleep(3000);
@@ -177,7 +183,7 @@ async function startBot() {
         } catch (err) {
             console.error(`ERROR processing number ${numbers[i]}:`, err.message);
         }
-        await sleep(3000); // Gap between attempts
+        await sleep(3000);
     }
 
     console.log("\n======================================");
