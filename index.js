@@ -31,7 +31,7 @@ function getNumbersList() {
 }
 
 // =====================================================
-// READ & PARSE SOCKS5 PROXY
+// READ & PARSE PROXY
 // =====================================================
 function getProxyDetails() {
     if (!fs.existsSync(PROXY_FILE)) {
@@ -46,12 +46,9 @@ function getProxyDetails() {
 
     let rawProxy = lines[0];
 
-    // Clean prefix if exists
-    if (rawProxy.startsWith("socks5://")) {
-        rawProxy = rawProxy.replace("socks5://", "");
-    } else if (rawProxy.startsWith("http://")) {
-        rawProxy = rawProxy.replace("http://", "");
-    }
+    // Remove any protocol prefixes if present
+    if (rawProxy.startsWith("socks5://")) rawProxy = rawProxy.replace("socks5://", "");
+    if (rawProxy.startsWith("http://")) rawProxy = rawProxy.replace("http://", "");
 
     const parts = rawProxy.split(":");
 
@@ -65,7 +62,7 @@ function getProxyDetails() {
         };
     }
 
-    console.error("ERROR: proxy.txt ka format sahi nahi hai! Expected: HOST:PORT:USER:PASS");
+    console.error("ERROR: proxy.txt format sahi nahi hai! Expected: HOST:PORT:USER:PASS");
     return null;
 }
 
@@ -200,8 +197,8 @@ async function startBot() {
 
     if (proxy) {
         console.log(`LOG: Connecting SOCKS5 Proxy -> Host: ${proxy.host} | Port: ${proxy.port}`);
-        // SOCKS5 authentication format directly in launch argument
-        launchArgs.push(`--proxy-server=socks5://${proxy.username}:${proxy.password}@${proxy.host}:${proxy.port}`);
+        // Valid Chromium proxy string format
+        launchArgs.push(`--proxy-server=socks5://${proxy.host}:${proxy.port}`);
     }
 
     console.log("LOG: Launching Stealth Browser...");
@@ -213,11 +210,13 @@ async function startBot() {
 
     const page = await browser.newPage();
 
-    if (proxy) {
+    // Authenticate credentials via Puppeteer
+    if (proxy && proxy.username && proxy.password) {
         await page.authenticate({
             username: proxy.username,
             password: proxy.password
-        }).catch(() => {});
+        });
+        console.log("LOG: Proxy authentication applied successfully!");
     }
 
     // Stealth Overrides
