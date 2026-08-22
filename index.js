@@ -31,7 +31,7 @@ function getNumbersList() {
 }
 
 // =====================================================
-// READ & PARSE PROXY
+// READ & PARSE SOCKS5 PROXY
 // =====================================================
 function getProxyDetails() {
     if (!fs.existsSync(PROXY_FILE)) {
@@ -39,12 +39,21 @@ function getProxyDetails() {
         return null;
     }
     
-    const content = fs.readFileSync(PROXY_FILE, "utf-8").trim();
+    let content = fs.readFileSync(PROXY_FILE, "utf-8").trim();
     const lines = content.split("\n").map(l => l.trim()).filter(l => l.length > 0);
 
     if (lines.length === 0) return null;
 
-    const parts = lines[0].split(":");
+    let rawProxy = lines[0];
+
+    // Clean prefix if exists
+    if (rawProxy.startsWith("socks5://")) {
+        rawProxy = rawProxy.replace("socks5://", "");
+    } else if (rawProxy.startsWith("http://")) {
+        rawProxy = rawProxy.replace("http://", "");
+    }
+
+    const parts = rawProxy.split(":");
 
     if (parts.length === 4) {
         // HOST:PORT:USER:PASS
@@ -54,17 +63,9 @@ function getProxyDetails() {
             username: parts[2].trim(),
             password: parts[3].trim()
         };
-    } else if (parts.length === 3) {
-        // HOST:USER:PASS (Fallback)
-        return {
-            host: parts[0].trim(),
-            port: "7778",
-            username: parts[1].trim(),
-            password: parts[2].trim()
-        };
     }
 
-    console.error("ERROR: proxy.txt ka format sahi nahi hai!");
+    console.error("ERROR: proxy.txt ka format sahi nahi hai! Expected: HOST:PORT:USER:PASS");
     return null;
 }
 
@@ -198,8 +199,9 @@ async function startBot() {
     ];
 
     if (proxy) {
-        console.log(`LOG: Connecting Proxy -> Host: ${proxy.host} | Port: ${proxy.port}`);
-        launchArgs.push(`--proxy-server=${proxy.host}:${proxy.port}`);
+        console.log(`LOG: Connecting SOCKS5 Proxy -> Host: ${proxy.host} | Port: ${proxy.port}`);
+        // SOCKS5 authentication format directly in launch argument
+        launchArgs.push(`--proxy-server=socks5://${proxy.username}:${proxy.password}@${proxy.host}:${proxy.port}`);
     }
 
     console.log("LOG: Launching Stealth Browser...");
@@ -211,13 +213,11 @@ async function startBot() {
 
     const page = await browser.newPage();
 
-    // Authenticate Proxy Credentials
-    if (proxy && proxy.username && proxy.password) {
+    if (proxy) {
         await page.authenticate({
             username: proxy.username,
             password: proxy.password
-        });
-        console.log("LOG: Proxy authentication success!");
+        }).catch(() => {});
     }
 
     // Stealth Overrides
