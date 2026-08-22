@@ -94,30 +94,34 @@ async function processNumber(page, phoneNumber) {
         // Submit to send code
         await page.keyboard.press("Enter");
         console.log("LOG: Submitted form to send code.");
-        await sleep(5000);
+        
+        // Wait for code screen to load fully
+        await sleep(6000);
 
         // 6. Click "Didn't get a code?"
         console.log("LOG: Looking for 'Did not get a code' option...");
-        
-        const didNotGetCodeClicked = await page.evaluate(() => {
-            const elements = Array.from(document.querySelectorAll('a, button, span'));
-            const target = elements.find(el => {
-                const txt = el.innerText ? el.innerText.toLowerCase() : "";
-                return txt.includes("didn't get a code") || 
-                       txt.includes("didn't receive a code") ||
-                       txt.includes("resend code");
-            });
-            if (target) {
-                target.click();
-                return true;
+
+        const clicked = await page.evaluate(() => {
+            const allElements = Array.from(document.querySelectorAll('a, button, div[role="button"], span'));
+            for (let el of allElements) {
+                const text = el.innerText ? el.innerText.toLowerCase() : "";
+                if (
+                    text.includes("didn't get a code") || 
+                    text.includes("didn't receive") || 
+                    text.includes("send code again") || 
+                    text.includes("resend")
+                ) {
+                    el.click();
+                    return true;
+                }
             }
             return false;
         });
 
-        if (didNotGetCodeClicked) {
-            console.log("LOG: Successfully clicked 'Didn't get a code'.");
+        if (clicked) {
+            console.log("LOG: Successfully clicked 'Didn't get a code'!");
         } else {
-            console.log("LOG: 'Didn't get a code' link not found or page changed.");
+            console.log("LOG: 'Didn't get a code' link not visible or require manual OTP input.");
         }
 
         await sleep(3000);
