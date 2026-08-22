@@ -12,18 +12,18 @@ const path = require("path");
 
 const CHROMIUM_PATH = process.env.PUPPETEER_EXECUTABLE_PATH || "/usr/bin/chromium";
 
-// File jisme numbers rakhe hain
+// Files
 const NUMBERS_FILE = path.join(__dirname, "number.txt");
+const PROXY_FILE = path.join(__dirname, "proxy.txt");
 
-// Delay helper function
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
 // =====================================================
-// READ NUMBERS FROM FILE
+// READ NUMBERS
 // =====================================================
 function getNumbersList() {
     if (!fs.existsSync(NUMBERS_FILE)) {
-        console.error("ERROR: number.txt file nahi mili! Folder mein number.txt banayein.");
+        console.error("ERROR: number.txt file nahi mili!");
         process.exit(1);
     }
     const content = fs.readFileSync(NUMBERS_FILE, "utf-8");
@@ -31,7 +31,45 @@ function getNumbersList() {
 }
 
 // =====================================================
-// MAIN AUTOMATION PROCESS
+// READ & PARSE PROXY
+// =====================================================
+function getProxyDetails() {
+    if (!fs.existsSync(PROXY_FILE)) {
+        console.log("LOG: proxy.txt nahi mili, direct connection use hoga.");
+        return null;
+    }
+    
+    const content = fs.readFileSync(PROXY_FILE, "utf-8").trim();
+    const lines = content.split("\n").map(l => l.trim()).filter(l => l.length > 0);
+
+    if (lines.length === 0) return null;
+
+    const parts = lines[0].split(":");
+
+    if (parts.length === 4) {
+        // HOST:PORT:USER:PASS
+        return {
+            host: parts[0].trim(),
+            port: parts[1].trim(),
+            username: parts[2].trim(),
+            password: parts[3].trim()
+        };
+    } else if (parts.length === 3) {
+        // HOST:USER:PASS (Fallback)
+        return {
+            host: parts[0].trim(),
+            port: "7778",
+            username: parts[1].trim(),
+            password: parts[2].trim()
+        };
+    }
+
+    console.error("ERROR: proxy.txt ka format sahi nahi hai!");
+    return null;
+}
+
+// =====================================================
+// MAIN PROCESS
 // =====================================================
 async function processNumber(page, phoneNumber) {
     console.log(`\n--------------------------------------`);
@@ -49,14 +87,13 @@ async function processNumber(page, phoneNumber) {
     const inputSelector = '#identify_email, input[name="email"], input[type="text"]';
     await page.waitForSelector(inputSelector, { visible: true, timeout: 15000 });
     
-    // Clear & Type with human-like delay
     await page.click(inputSelector);
     await page.evaluate((sel) => { document.querySelector(sel).value = ""; }, inputSelector);
     await page.type(inputSelector, phoneNumber, { delay: 100 });
 
     console.log("LOG: Number entered. Submitting search via Enter key...");
 
-    // 3. Submit Form using Enter Key
+    // 3. Submit Form
     await Promise.all([
         page.keyboard.press("Enter"),
         page.waitForNavigation({ waitUntil: "networkidle2", timeout: 15000 }).catch(() => {})
@@ -64,7 +101,7 @@ async function processNumber(page, phoneNumber) {
 
     await sleep(3000);
 
-    // 4. Check if Account Exists or Not Found
+    // 4. Check Result
     const pageText = await page.evaluate(() => document.body.innerText);
 
     if (
@@ -79,7 +116,7 @@ async function processNumber(page, phoneNumber) {
 
     console.log(`✅ RESULT: [${phoneNumber}] -> Account Found!`);
 
-    // 5. Select "Get code via SMS" option if available
+    // 5. Select "Get code via SMS"
     try {
         console.log("LOG: Looking for SMS option...");
         await sleep(2000);
@@ -94,7 +131,6 @@ async function processNumber(page, phoneNumber) {
             }
         });
 
-        // Click Continue
         console.log("LOG: Submitting SMS selection...");
         await Promise.all([
             page.evaluate(() => {
@@ -147,44 +183,55 @@ async function processNumber(page, phoneNumber) {
 // =====================================================
 async function startBot() {
     const numbers = getNumbersList();
-    console.log(`LOG: Total ${numbers.length} numbers loaded from file.`);
+    const proxy = getProxyDetails();
 
-    if (numbers.length === 0) {
-        console.log("LOG: number.txt is empty. Stopping bot.");
-        return;
+    console.log(`LOG: Total ${numbers.length} numbers loaded.`);
+
+    const launchArgs = [
+        "--no-sandbox",
+        "--disable-setuid-sandbox",
+        "--disable-dev-shm-usage",
+        "--disable-gpu",
+        "--disable-blink-features=AutomationControlled",
+        "--window-size=1366,768",
+        "--lang=en-US,en"
+    ];
+
+    if (proxy) {
+        console.log(`LOG: Connecting Proxy -> Host: ${proxy.host} | Port: ${proxy.port}`);
+        launchArgs.push(`--proxy-server=${proxy.host}:${proxy.port}`);
     }
 
-    console.log("LOG: Launching Browser in Stealth Mode...");
+    console.log("LOG: Launching Stealth Browser...");
     const browser = await puppeteer.launch({
         executablePath: CHROMIUM_PATH,
         headless: true,
-        args: [
-            "--no-sandbox",
-            "--disable-setuid-sandbox",
-            "--disable-dev-shm-usage",
-            "--disable-gpu",
-            "--disable-blink-features=AutomationControlled", // Hides Puppeteer flag
-            "--window-size=1366,768",
-            "--lang=en-US,en"
-        ]
+        args: launchArgs
     });
 
     const page = await browser.newPage();
 
-    // Bypass Bot Detection Checks
+    // Authenticate Proxy Credentials
+    if (proxy && proxy.username && proxy.password) {
+        await page.authenticate({
+            username: proxy.username,
+            password: proxy.password
+        });
+        console.log("LOG: Proxy authentication success!");
+    }
+
+    // Stealth Overrides
     await page.evaluateOnNewDocument(() => {
         Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
         Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
-        Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
     });
 
-    // Real Browser User-Agent
     await page.setUserAgent(
         "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
     );
     await page.setViewport({ width: 1366, height: 768 });
 
-    // Loop through each number
+    // Loop through numbers
     for (let i = 0; i < numbers.length; i++) {
         try {
             await processNumber(page, numbers[i]);
@@ -195,7 +242,7 @@ async function startBot() {
     }
 
     console.log("\n======================================");
-    console.log("LOG: All numbers processed! Closing browser.");
+    console.log("LOG: Process complete! Closing browser.");
     console.log("======================================\n");
 
     await browser.close();
