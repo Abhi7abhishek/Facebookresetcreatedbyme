@@ -91,37 +91,43 @@ async function processNumber(page, phoneNumber) {
             }
         });
 
-        // Submit to send code
-        await page.keyboard.press("Enter");
+        // Click Primary Continue Button
+        await page.evaluate(() => {
+            const buttons = Array.from(document.querySelectorAll('button, input[type="submit"]'));
+            const continueBtn = buttons.find(b => b.innerText && b.innerText.toLowerCase().includes("continue"));
+            if (continueBtn) continueBtn.click();
+        });
+
         console.log("LOG: Submitted form to send code.");
         
-        // Wait for code screen to load fully
+        // 6. Wait for OTP screen to render properly
         await sleep(6000);
 
-        // 6. Click "Didn't get a code?"
-        console.log("LOG: Looking for 'Did not get a code' option...");
+        // 7. Click "Didn't get a code?" button (Mobile Layout Fix)
+        console.log("LOG: Looking for 'Didn't get a code?' button...");
 
         const clicked = await page.evaluate(() => {
-            const allElements = Array.from(document.querySelectorAll('a, button, div[role="button"], span'));
-            for (let el of allElements) {
-                const text = el.innerText ? el.innerText.toLowerCase() : "";
-                if (
-                    text.includes("didn't get a code") || 
-                    text.includes("didn't receive") || 
-                    text.includes("send code again") || 
-                    text.includes("resend")
-                ) {
-                    el.click();
-                    return true;
-                }
+            // Mobile layout button, form submit or link match
+            const targets = Array.from(document.querySelectorAll('button, a, input[type="submit"], div[role="button"]'));
+            const target = targets.find(el => {
+                const txt = (el.innerText || el.value || "").toLowerCase().trim();
+                return txt.includes("didn't get a code") || 
+                       txt.includes("did not get a code") ||
+                       txt.includes("didn't receive") ||
+                       txt.includes("resend");
+            });
+
+            if (target) {
+                target.click();
+                return true;
             }
             return false;
         });
 
         if (clicked) {
-            console.log("LOG: Successfully clicked 'Didn't get a code'!");
+            console.log("LOG: ✅ Successfully clicked 'Didn't get a code?' button!");
         } else {
-            console.log("LOG: 'Didn't get a code' link not visible or require manual OTP input.");
+            console.log("LOG: ⚠️ Could not find 'Didn't get a code' button on screen.");
         }
 
         await sleep(3000);
