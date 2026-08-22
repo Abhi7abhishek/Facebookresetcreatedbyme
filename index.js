@@ -49,10 +49,10 @@ async function processNumber(page, phoneNumber) {
     const inputSelector = '#identify_email, input[name="email"], input[type="text"]';
     await page.waitForSelector(inputSelector, { visible: true, timeout: 15000 });
     
-    // Clear & Type
+    // Clear & Type with human-like delay
     await page.click(inputSelector);
     await page.evaluate((sel) => { document.querySelector(sel).value = ""; }, inputSelector);
-    await page.type(inputSelector, phoneNumber, { delay: 50 });
+    await page.type(inputSelector, phoneNumber, { delay: 100 });
 
     console.log("LOG: Number entered. Submitting search via Enter key...");
 
@@ -105,7 +105,6 @@ async function processNumber(page, phoneNumber) {
             page.waitForNavigation({ waitUntil: "networkidle2", timeout: 15000 }).catch(() => {})
         ]);
 
-        // Extra wait for code confirmation page to load
         await sleep(5000);
 
         // 6. Click "Didn't get a code?" button
@@ -119,12 +118,12 @@ async function processNumber(page, phoneNumber) {
                     text === "Didn't get a code?" || 
                     text === "Didn't get a code" ||
                     text === "Didn't receive a code?"
-                ) && node.children.length === 0; // Ensures clicking the deepest element
+                ) && node.children.length === 0;
             });
 
             if (targetNode) {
                 targetNode.click();
-                if (targetNode.parentElement) targetNode.parentElement.click(); // Backup parent click
+                if (targetNode.parentElement) targetNode.parentElement.click();
                 return true;
             }
             return false;
@@ -155,7 +154,7 @@ async function startBot() {
         return;
     }
 
-    console.log("LOG: Launching Browser...");
+    console.log("LOG: Launching Browser in Stealth Mode...");
     const browser = await puppeteer.launch({
         executablePath: CHROMIUM_PATH,
         headless: true,
@@ -164,15 +163,24 @@ async function startBot() {
             "--disable-setuid-sandbox",
             "--disable-dev-shm-usage",
             "--disable-gpu",
-            "--disable-blink-features=AutomationControlled"
+            "--disable-blink-features=AutomationControlled", // Hides Puppeteer flag
+            "--window-size=1366,768",
+            "--lang=en-US,en"
         ]
     });
 
     const page = await browser.newPage();
 
-    // User Agent Set
+    // Bypass Bot Detection Checks
+    await page.evaluateOnNewDocument(() => {
+        Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+        Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+        Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+    });
+
+    // Real Browser User-Agent
     await page.setUserAgent(
-        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36"
+        "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36"
     );
     await page.setViewport({ width: 1366, height: 768 });
 
